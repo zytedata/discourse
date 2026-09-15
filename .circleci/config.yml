@@ -1,0 +1,72 @@
+version: 2.1
+
+jobs:
+  build-and-deploy:
+    docker:
+      - image: cimg/base:stable
+    steps:
+      - checkout
+      - setup_remote_docker:
+          docker_layer_caching: true
+      - run:
+          name: Build and push Docker image
+          command: |
+            SHA="${CIRCLE_SHA1:0:7}"
+            SAFE_BRANCH=$(printf '%s' "$CIRCLE_BRANCH" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9' '-' | sed 's/^-*//;s/-*$//')
+
+            if [ "${CIRCLE_BRANCH}" = "main" ]; then
+              IMAGE="images.scrapinghub.com/zytedata/discourse:${SHA}"
+              LATEST="images.scrapinghub.com/zytedata/discourse:latest"
+            else
+              IMAGE="images.scrapinghub.com/zytedata/discourse/${SAFE_BRANCH}:${SHA}"
+              LATEST="images.scrapinghub.com/zytedata/discourse/${SAFE_BRANCH}:latest"
+            fi
+
+            echo "$DOCKER_PASS" | docker login images.scrapinghub.com \
+              -u "$DOCKER_USER" --password-stdin
+            # BuildKit: `RUN --mount=type=cache` and friends fail outright on the
+            # legacy builder ("the --mount option requires BuildKit"). Kept in step
+            # with the Cloud Build path in core/services/build_service.py so the same
+            # Dockerfile builds whichever builder an app uses.
+            export DOCKER_BUILDKIT=1
+            docker build --progress=plain -t "${IMAGE}" .
+            docker push "${IMAGE}"
+            docker tag "${IMAGE}" "${LATEST}"
+            docker push "${LATEST}"
+            echo "Pushed: ${IMAGE} and ${LATEST}"
+      - run:
+          name: Notify ZADP
+          command: |
+            SHA="${CIRCLE_SHA1:0:7}"
+            SAFE_BRANCH=$(printf '%s' "$CIRCLE_BRANCH" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9' '-' | sed 's/^-*//;s/-*$//')
+            if [ "${CIRCLE_BRANCH}" = "main" ]; then
+              IMAGE="images.scrapinghub.com/zytedata/discourse:${SHA}"
+            else
+              IMAGE="images.scrapinghub.com/zytedata/discourse/${SAFE_BRANCH}:${SHA}"
+            fi
+            echo "Notifying ZADP"
+            echo "  branch=$CIRCLE_BRANCH  commit=$SHA  image=$IMAGE"
+            # Capture status + body separately so failures are actually readable
+            # (a bare `curl -sf` just exits 22 with no explanation).
+            RESP=$(mktemp)
+            HTTP=$(curl -sS -o "$RESP" -w '%{http_code}' -X POST "https://zadp.zyte.group/api/v1/deploy/08fc38d64b37997cdf66e5aa4c53f228a85c9244d5c185d728b336bd87c90082/" \
+              -H "Authorization: Bearer $ZADP_DEPLOY_TOKEN" \
+              -H "Content-Type: application/json" \
+              -d "{\"commit_sha\":\"$CIRCLE_SHA1\",\"branch\":\"$CIRCLE_BRANCH\",\"image\":\"${IMAGE}\"}")
+            echo "ZADP responded HTTP $HTTP:"
+            cat "$RESP"; echo
+            if [ "$HTTP" -ge 400 ]; then
+              echo ""
+              echo "Notify ZADP failed (HTTP $HTTP)."
+              echo "  401 → ZADP_DEPLOY_TOKEN (CircleCI 'Internal' context) doesn't match the platform's ZADP_CI_TOKEN."
+              echo "  404 → the app deploy token in this file is stale; regenerate .circleci/config.yml from ZADP."
+              exit 1
+            fi
+
+workflows:
+  version: 2
+  build-and-deploy:
+    jobs:
+      - build-and-deploy:
+          context:
+            - Internal
