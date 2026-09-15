@@ -1,0 +1,30 @@
+#!/bin/bash
+
+# we use this to boot up cause runit will not handle TERM and will not exit when done
+
+shutdown() {
+  echo Shutting Down
+  /etc/runit/3
+  ls /etc/service | xargs sv force-stop
+  kill -HUP $RUNSVDIR
+  wait $RUNSVDIR
+
+  # give stuff a bit of time to finish
+  sleep 0.1
+
+  ORPHANS=`ps -eo pid | grep -v PID  | tr -d ' ' | grep -v '^1$'`
+  for pid in $ORPHANS; do
+    (timeout 5 /bin/bash -c "kill $pid && wait $pid" 2>/dev/null || kill -9 $pid 2>/dev/null) &
+  done
+  wait
+  exit
+}
+
+/etc/runit/1 || exit $?
+/etc/runit/2&
+RUNSVDIR=$!
+echo "Started runsvdir, PID is $RUNSVDIR"
+trap shutdown SIGTERM SIGHUP
+wait $RUNSVDIR
+
+shutdown
