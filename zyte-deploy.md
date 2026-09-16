@@ -116,8 +116,8 @@ Edit the values below and push — the platform picks up changes on the next dep
 
 | Name | Branch Pattern | Auto-Deploy | Custom Domains | Authentication | Public Endpoints | Access Groups | Secret Set | Services | Database | Redis DB | Image | Slack Channel |
 |------|----------------|-------------|----------------|----------------|------------------|---------------|------------|----------|----------|----------|-------|---------------|
-| production | main | Yes | discourse.zyte.group | Disabled | | | default | default | db_$branch | $branch | images.scrapinghub.com/zytedata/discourse$branch_path:$commit_sha | |
-| shared | * | No | | Disabled | | | default | default | db_$branch | $branch | images.scrapinghub.com/zytedata/discourse$branch_path:$commit_sha | |
+| production | main | Yes | discourse.zyte.group | Disabled | | | default | default | db_$branch | $branch | images.scrapinghub.com/zytedata/discourse:$commit_sha | |
+| shared | * | No | | Disabled | | | default | default | db_$branch | $branch | images.scrapinghub.com/zytedata/discourse:$commit_sha | |
 
 ## Required Secrets
 
