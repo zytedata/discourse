@@ -12,6 +12,10 @@
 #
 # Bump DISCOURSE_BASE_TAG deliberately; Renovate opens the PR. Never use
 # :release or :latest — a silent base bump is an unreviewed production change.
+#
+# NOTE: templates/web.template.yml also carries a `base_image:` key. It is dead
+# in this build — only upstream's launcher reads it, and upstream syncs will keep
+# changing it. This ARG is the only pin that matters.
 ARG DISCOURSE_BASE_TAG=2.0.20260915-1709-stable
 FROM discourse/base:${DISCOURSE_BASE_TAG}
 
