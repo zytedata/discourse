@@ -1,0 +1,16 @@
+# Trust the Google Cloud load balancer in front of the pod.
+#
+# Without this every request appears to come from the LB, which breaks rate
+# limiting, the admin IP columns, blocked-IP screening and Akismet — all of
+# which would be deciding against one address for the whole internet.
+#
+# 35.191.0.0/16 and 130.211.0.0/22 are Google's documented forwarding ranges
+# for external Application Load Balancers and health checks.
+run:
+  - file:
+      path: /etc/nginx/conf.d/outlets/server/15-zyte-real-ip.conf
+      contents: |
+        set_real_ip_from 35.191.0.0/16;
+        set_real_ip_from 130.211.0.0/22;
+        real_ip_header X-Forwarded-For;
+        real_ip_recursive on;

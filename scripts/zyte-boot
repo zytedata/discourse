@@ -1,0 +1,22 @@
+#!/bin/bash
+# Runtime entrypoint.
+#
+# ZADP injects DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_PASSWORD (Cloud SQL) and
+# VALKEY_HOST/VALKEY_PORT (Valkey). Discourse reads DISCOURSE_*, and the
+# copy-env runit script turns DISCOURSE_* into discourse.conf. Translating here,
+# in the process that execs the supervisor, is what makes the vars visible to it
+# — a script under /etc/runit/1.d/ runs in its own process and its exports die
+# with it.
+set -euo pipefail
+
+export DISCOURSE_DB_HOST="${DISCOURSE_DB_HOST:-${DB_HOST:?DB_HOST not injected}}"
+export DISCOURSE_DB_PORT="${DISCOURSE_DB_PORT:-${DB_PORT:-5432}}"
+export DISCOURSE_DB_NAME="${DISCOURSE_DB_NAME:-${DB_NAME:-db}}"
+export DISCOURSE_DB_USERNAME="${DISCOURSE_DB_USERNAME:-${DB_USER:?DB_USER not injected}}"
+export DISCOURSE_DB_PASSWORD="${DISCOURSE_DB_PASSWORD:-${DB_PASSWORD:?DB_PASSWORD not injected}}"
+export DISCOURSE_DB_SOCKET=""
+
+export DISCOURSE_REDIS_HOST="${DISCOURSE_REDIS_HOST:-${VALKEY_HOST:?VALKEY_HOST not injected}}"
+export DISCOURSE_REDIS_PORT="${DISCOURSE_REDIS_PORT:-${VALKEY_PORT:-6379}}"
+
+exec /sbin/boot

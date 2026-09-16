@@ -1,0 +1,25 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "timezone": "Europe/Dublin",
+  "schedule": ["before 6am on monday"],
+  "labels": ["dependencies", "discourse"],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Discourse base image pinned as a Dockerfile ARG default, which the stock Docker manager does not read.",
+      "managerFilePatterns": ["/^Dockerfile$/"],
+      "matchStrings": ["ARG DISCOURSE_BASE_TAG=(?<currentValue>\\S+)"],
+      "depNameTemplate": "discourse/base",
+      "datasourceTemplate": "docker",
+      "versioningTemplate": "loose"
+    }
+  ],
+  "packageRules": [
+    {
+      "description": "Stay on the -stable base variant; never let Renovate move us onto tests-passed builds.",
+      "matchPackageNames": ["discourse/base"],
+      "allowedVersions": "/-stable$/"
+    }
+  ]
+}

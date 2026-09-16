@@ -1,0 +1,32 @@
+#!/bin/bash
+# Build-time bootstrap. Mirrors launcher's set_template_info(): concatenate every
+# template listed in app.yml's `templates:` key, then app.yml itself last so it
+# wins the merge, separated by the marker pups splits on.
+#
+# Reading the list from app.yml (rather than hardcoding it here) keeps one source
+# of truth — adding a template is a one-line app.yml change.
+set -euo pipefail
+
+CONFIG=/zyte/app.yml
+ROOT=/zyte
+
+templates=$(ruby -ryaml -e '
+  conf = YAML.safe_load(File.read(ARGV[0]))
+  puts(conf["templates"] || [])
+' "$CONFIG")
+
+{
+  echo "hack: true"
+  while IFS= read -r t; do
+    [ -n "$t" ] || continue
+    path="$ROOT/$t"
+    [ -f "$path" ] || { echo "missing template: $t" >&2; exit 1; }
+    echo "_FILE_SEPERATOR_"
+    cat "$path"
+  done <<< "$templates"
+  echo "_FILE_SEPERATOR_"
+  cat "$CONFIG"
+} | /usr/local/bin/pups --stdin --skip-tags=migrate,precompile
+
+# Shrink the layer: build caches are dead weight in the shipped image.
+rm -rf /var/www/discourse/tmp/cache /root/.bundle/cache /root/.npm /root/.cache

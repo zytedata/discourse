@@ -1,0 +1,91 @@
+# zyte-community — Discourse app config for the Zyte Apps Deploy Platform.
+#
+# This is a `web_only` deployment: Postgres and Redis live OUTSIDE the container
+# (Cloud SQL and Valkey, provisioned per zyte-deploy.md). Do not add the
+# postgres/redis templates — they would start a second, throwaway database
+# inside the pod.
+#
+# Secrets are NEVER written here. They arrive as environment variables from
+# ZADP's secret set and are read at boot by scripts/zyte-boot.
+
+templates:
+  - "templates/web.template.yml"
+  - "templates/zyte-proxy.template.yml"
+
+params:
+  # Track the `stable` branch: security backports, moves ~quarterly. Use
+  # `tests-passed` only if you want to live on Discourse's main line.
+  version: stable
+  home: /var/www/discourse
+  upload_size: 20m
+
+env:
+  LANG: en_US.UTF-8
+  LC_ALL: en_US.UTF-8
+  LANGUAGE: en_US.UTF-8
+
+  DISCOURSE_HOSTNAME: discourse.zyte.group
+
+  # Sized for the 4Gi request in zyte-deploy.md. Raise workers only together
+  # with the memory request — each unicorn worker is ~400-500MB resident.
+  UNICORN_WORKERS: 3
+  UNICORN_SIDEKIQS: 1
+
+  # Cloud SQL, not a unix socket. Blanking the socket is required: the web
+  # template defaults it to /var/run/postgresql and a non-empty socket wins
+  # over host/port.
+  DISCOURSE_DB_SOCKET: ''
+
+  # Run migrations as the pod starts. Safe at 1 replica; see zyte-deploy.md
+  # before scaling out — concurrent db:migrate is how you corrupt a schema.
+  MIGRATE_ON_BOOT: 1
+
+  # Object storage: GCS via its S3-compatible interop endpoint. Pods are
+  # ephemeral, so this is not optional — without it every upload is lost on the
+  # next deploy.
+  DISCOURSE_USE_S3: true
+  DISCOURSE_S3_ENDPOINT: https://storage.googleapis.com
+  # GCS ignores region, but the AWS SDK refuses to sign without one.
+  DISCOURSE_S3_REGION: us-east-1
+  # GCS does not implement the S3 CORS API the SDK calls. Set CORS on the
+  # bucket with `gcloud storage buckets update --cors-file=...` instead.
+  DISCOURSE_S3_INSTALL_CORS_RULE: false
+  DISCOURSE_S3_BUCKET: zyte-community-uploads
+  DISCOURSE_S3_BACKUP_BUCKET: zyte-community-backups
+  DISCOURSE_BACKUP_LOCATION: s3
+  # DISCOURSE_S3_ACCESS_KEY_ID / DISCOURSE_S3_SECRET_ACCESS_KEY come from the
+  # ZADP secret set — HMAC interop keys, not a GCP service-account JSON.
+
+  # SMTP — values come from the ZADP secret set. Discourse will not complete
+  # setup without working mail.
+  # DISCOURSE_SMTP_ADDRESS, DISCOURSE_SMTP_PORT, DISCOURSE_SMTP_USER_NAME,
+  # DISCOURSE_SMTP_PASSWORD, DISCOURSE_NOTIFICATION_EMAIL
+
+hooks:
+  after_code:
+    - exec:
+        cd: $home/plugins
+        cmd:
+          # Plugins are baked into the image (unlike themes, which Discourse
+          # pulls from git at runtime and stores in the database).
+          #
+          # These track their default branch on purpose. Discourse resolves the
+          # right commit for our core version from each plugin's
+          # .discourse-compatibility file, via the plugin:pull_compatible_all
+          # step in web.template.yml. Pinning SHAs here would fight that and
+          # strand us on versions incompatible with the next stable bump.
+
+          # Required: drives the admin upgrade UI.
+          - git clone --depth 1 https://github.com/discourse/docker_manager.git
+
+          # Core set.
+          - git clone --depth 1 https://github.com/discourse/discourse-solved.git
+          - git clone --depth 1 https://github.com/discourse/discourse-data-explorer.git
+          - git clone --depth 1 https://github.com/discourse/discourse-templates.git
+          - git clone --depth 1 https://github.com/discourse/discourse-chat-integration.git
+
+          # Zyte-specific: developer community, public forum.
+          - git clone --depth 1 https://github.com/discourse/discourse-github.git
+          - git clone --depth 1 https://github.com/discourse/discourse-akismet.git
+          - git clone --depth 1 https://github.com/discourse/discourse-topic-voting.git
+          - git clone --depth 1 https://github.com/discourse/discourse-assign.git

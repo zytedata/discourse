@@ -97,12 +97,25 @@ Edit the values below and push — the platform picks up changes on the next dep
 
 | Setting | Value |
 |---------|-------|
-| Replicas | 2 |
-| CPU Request | 250m |
-| Memory Request | 256Mi |
-| App Port |  |
-| Health Check Path | none |
-| Health Check Port |  |
+| Replicas | 1 |
+| CPU Request | 1000m |
+| Memory Request | 4Gi |
+| App Port | 80 |
+| Health Check Path | /srv/status |
+| Health Check Port | 80 |
+
+> **Replicas is 1 on purpose.** Discourse runs `db:migrate` as each pod boots
+> (`MIGRATE_ON_BOOT` in `containers/app.yml`). Two pods booting together race the
+> same schema migration. Before scaling out, move migrations to a pre-deploy step
+> and drop `MIGRATE_ON_BOOT`.
+>
+> **Memory is 4Gi because Unicorn forks 3 workers plus a Sidekiq process.** Each
+> worker is ~400-500MB resident. Raise `UNICORN_WORKERS` only together with this
+> value.
+>
+> **Health check is `/srv/status`**, Discourse's own liveness endpoint. Boot
+> includes an asset precompile, so allow a generous initial delay (~180s) before
+> the first probe or the platform will kill the pod mid-startup.
 
 ## Environments
 
@@ -128,7 +141,13 @@ Edit the values below and push — the platform picks up changes on the next dep
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| SECRET_EXAMPLE | No | A placeholder — rename or remove this row. |
+| DISCOURSE_SMTP_ADDRESS | Yes | SMTP host. Discourse cannot finish setup without working mail. |
+| DISCOURSE_SMTP_PORT | Yes | Usually 587. |
+| DISCOURSE_SMTP_USER_NAME | Yes | SMTP username. |
+| DISCOURSE_SMTP_PASSWORD | Yes | SMTP password. |
+| DISCOURSE_S3_ACCESS_KEY_ID | Yes | GCS HMAC interop key — not a service-account JSON. |
+| DISCOURSE_S3_SECRET_ACCESS_KEY | Yes | GCS HMAC interop secret. |
+| DISCOURSE_DEVELOPER_EMAILS | Yes | Comma-separated; these accounts become admin on first signup. |
 
 ## Environment Variables
 
@@ -136,11 +155,15 @@ Edit the values below and push — the platform picks up changes on the next dep
 > Remove this section entirely if your project does not need any.
 > Mark a row **Yes** under Required to block deploys until its value is set.
 
+> `DB_*` and `VALKEY_*` are injected by the platform and translated into the
+> `DISCOURSE_*` names Discourse expects by `scripts/zyte-boot` at container start.
+> Everything else lives in `containers/app.yml`.
+
 | Variable | Required | Description |
 |----------|----------|-------------|
-| VALKEY_URL | No | |
-| VALKEY_HOST | No | |
-| VALKEY_PORT | No | |
+| VALKEY_HOST | Yes | Injected by the platform; read by `scripts/zyte-boot`. |
+| VALKEY_PORT | No | Injected by the platform; defaults to 6379. |
+| DISCOURSE_NOTIFICATION_EMAIL | No | From address for outbound mail. |
 
 ---
 
