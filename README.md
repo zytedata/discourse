@@ -96,6 +96,8 @@ this file lists variable names only.
   See the note in `zyte-deploy.md` before scaling out.
 - **Boot takes a few minutes** because assets precompile at startup. Health checks need a
   generous initial delay.
-- **Two CI systems build this repo**: ZADP's Cloud Build and
-  [.circleci/config.yml](.circleci/config.yml). Both run on every push. That is supported
-  but wasteful — disable one once you have picked a winner.
+- **Only ZADP builds this repo.** Its webhook is the sole one installed on
+  `zytedata/discourse`, and it reports build status in the ZADP UI rather than as a
+  GitHub check — a green commit here means nothing was asked to run, not that a build
+  passed. [.circleci/config.yml](.circleci/config.yml) is committed but the CircleCI
+  project was never connected, so it has never run. Either wire it up or delete it.
