@@ -5,7 +5,7 @@ A deliberately minimal, single-VM Discourse install in the ZADP project
 `web_only` path at the root of this repo — that one runs Discourse on the Zyte
 deploy platform; this is a self-contained box.
 
-- Site: <https://discourse.community.zadp-vms.zyte.group>
+- Site: <https://community.zyte.com>
 - ZADP project page (budget, VM card, delete): <https://zadp.zyte.group/vm/8/>
 
 ## What exists
@@ -18,6 +18,8 @@ deploy platform; this is a self-contained box.
 | OS | newest Ubuntu LTS family, discovered at create time |
 | Install | `discourse_docker` standalone at `/var/discourse` |
 | Firewall | `allow-web` (tcp 80/443, tag `web`) + ZADP's IAP-only SSH |
+| Hostname | `community.zyte.com` (canonical); ZADP name is a cert SAN and 301s to it |
+| IP | `34.24.237.156`, **static** (`discourse-ip`) — the zyte.com A record depends on it |
 | TLS | Let's Encrypt, obtained and renewed by Discourse's own nginx |
 | Mail | Mailgun, `smtp.mailgun.org:587` STARTTLS, from `noreply@mg.zyte.com` |
 
@@ -107,15 +109,79 @@ sudo systemd-run --unit=discourse-bootstrap --collect \
   /var/discourse/launcher rebuild app
 ```
 
-Stop the VM when nobody needs it — it is the expensive part:
+**Do not stop this VM.** It serves a public community and is expected to be up
+all the time. The cost guidance in the ZADP skill about stopping idle VMs is
+written for sandboxes and does not apply here. Stopping it is also the one thing
+that would break `community.zyte.com`, if the address were not static.
+
+## Availability
+
+| Failure | Recovers automatically? | Mechanism |
+|---|---|---|
+| Google host failure, VM crash | yes | `automaticRestart: true` |
+| Google host maintenance | yes, no downtime | `onHostMaintenance: MIGRATE` |
+| VM reboot | yes | `docker.service` enabled at boot |
+| Container exits or is killed | yes | `--restart=always` |
+| App up but not serving | yes, within ~15 min | `discourse-healthcheck.timer` |
+| Accidental `instances delete` | blocked | deletion protection enabled |
+| Boot disk lost, VM deleted on purpose | **no** | restore from backup, see below |
+
+`--restart=always` only reacts to a process *exiting*. A wedged unicorn, Postgres
+out of connections, or an OOM that leaves the process alive all look like
+"container up, site down", and nothing else notices. `discourse-healthcheck.sh`
+probes `/srv/status` over loopback every 5 minutes and restarts the container
+after 3 consecutive failures, then polls up to 5 minutes for it to come back
+before escalating. Tested by stopping the container on purpose: it detected,
+restarted and recovered.
+
+A Cloud Monitoring uptime check hits `https://community.zyte.com/srv/status`
+from the US and Europe every 5 minutes, and the alert policy
+*"community.zyte.com is down"* emails the owner. That is the backstop for when
+the watchdog itself cannot fix it.
+
+**What this design cannot do is survive losing the VM.** Postgres is on the local
+disk, so recovery from VM loss is a restore, measured in tens of minutes. The
+textbook answer — a managed instance group with autohealing — is *wrong here*: a
+MIG recreates instances from an image and would destroy the database. Real
+self-healing needs the state off the box (Cloud SQL + GCS uploads), which is what
+the `web_only` setup at the root of this repo does.
+
+## Backups
+
+| | |
+|---|---|
+| Bucket | `gs://zyte-vm-community-019d-discourse-backups` (US multi-region, versioned) |
+| Schedule | `discourse-backup.timer`, daily 02:30 UTC |
+| Retention | 90 days live, 30 days for noncurrent versions, 3 days on the VM |
+| Identity | the VM's runtime SA, granted `roles/storage.objectAdmin` **on this bucket only** |
+
+`discourse-backup-to-gcs.sh` takes a Discourse backup, refuses to upload an
+archive that will not list or that contains no `dump.sql`, and refuses to prune
+local copies until the upload is confirmed present in the bucket.
+
+Restore, on a VM with Discourse already bootstrapped:
 
 ```bash
-gcloud compute instances stop  discourse --zone=us-east1-b
-gcloud compute instances start discourse --zone=us-east1-b
+gcloud storage ls gs://zyte-vm-community-019d-discourse-backups/discourse/
+gcloud storage cp gs://.../discourse/<file>.tar.gz \
+  /var/discourse/shared/standalone/backups/default/
+cd /var/discourse
+sudo ./launcher enter app
+discourse enable_restore
+discourse restore <file>.tar.gz
+discourse disable_restore
 ```
 
-The hostname's A record follows the ephemeral external IP, so a stop/start keeps
-the name working.
+**This has not been restore-tested end to end.** What has been verified is that
+the stored archive downloads from the bucket, lists, and yields a valid
+PostgreSQL dump. Run a real restore onto a scratch VM before trusting it with
+content that matters.
+
+**The bucket is still inside this project.** That protects against losing the VM
+or its disk. It does *not* protect against the project itself being the problem —
+the budget cap unlinking billing, or the project being deleted. A genuine
+off-project copy needs a destination outside `zyte-vm-community-019d`; ask the
+owner where.
 
 ## Gotchas found the hard way
 

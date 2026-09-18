@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily Discourse backup to Cloud Storage
+
+[Timer]
+# 02:30 UTC, before the 03:00 disk snapshot window.
+OnCalendar=*-*-* 02:30:00
+RandomizedDelaySec=900
+Persistent=true
+
+[Install]
+WantedBy=timers.target

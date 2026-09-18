@@ -1,0 +1,10 @@
+[Unit]
+Description=Discourse backup to Cloud Storage
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/discourse-backup-to-gcs.sh
+# A backup of a 2 GB box can take a while; do not let systemd kill it midway.
+TimeoutStartSec=3600
