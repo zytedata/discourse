@@ -1,0 +1,66 @@
+##
+## Discourse single-container ("standalone") config for the ZADP community VM.
+## Rebuild after editing:  cd /var/discourse && sudo ./launcher rebuild app
+##
+templates:
+  - "templates/postgres.template.yml"
+  - "templates/redis.template.yml"
+  - "templates/web.template.yml"
+  - "templates/web.ratelimited.template.yml"
+  ## TLS, terminated by Discourse's own nginx. Let's Encrypt is obtained on first
+  ## start and renewed in the background; requires the hostname below to resolve
+  ## to this VM and tcp:80 open (the `allow-web` firewall rule).
+  - "templates/web.ssl.template.yml"
+  - "templates/web.letsencrypt.ssl.template.yml"
+
+expose:
+  - "80:80"     # redirects to 443 and answers the ACME http-01 challenge
+  - "443:443"
+
+params:
+  db_default_text_search_config: "pg_catalog.english"
+  ## Tuned for 2 GB RAM (e2-small) per Discourse's own sizing guidance.
+  db_shared_buffers: "128MB"
+  db_work_mem: "10MB"
+
+env:
+  LANG: en_US.UTF-8
+  LC_ALL: en_US.UTF-8
+  RAILS_ENV: production
+  UNICORN_WORKERS: 2
+  UNICORN_SIDEKIQS: 1
+
+  DISCOURSE_HOSTNAME: discourse.community.zadp-vms.zyte.group
+  DISCOURSE_DEVELOPER_EMAILS: 'angel.munoz@zyte.com'
+  ## Let's Encrypt writes here before a certificate expires.
+  LETSENCRYPT_ACCOUNT_EMAIL: 'angel.munoz@zyte.com'
+
+  ## SMTP2GO. Port 2525 with STARTTLS: GCE blocks outbound 25, and 2525 is
+  ## SMTP2GO's alternative port. The password is NOT in this file -- it lives in
+  ## this project's Secret Manager as `discourse-smtp-password` and is injected
+  ## into /var/discourse/containers/app.yml on the VM. See README.
+  DISCOURSE_SMTP_ADDRESS: mail-eu.smtp2go.com
+  DISCOURSE_SMTP_PORT: 2525
+  DISCOURSE_SMTP_USER_NAME: "zyte.com"
+  DISCOURSE_SMTP_PASSWORD: "__FROM_SECRET_MANAGER__"
+  DISCOURSE_SMTP_ENABLE_START_TLS: true
+  DISCOURSE_NOTIFICATION_EMAIL: noreply@discourse.community.zadp-vms.zyte.group
+
+volumes:
+  - volume:
+      host: /var/discourse/shared/standalone
+      guest: /shared
+  - volume:
+      host: /var/discourse/shared/standalone/log/var-log
+      guest: /var/log
+
+hooks:
+  after_code:
+    - exec:
+        cd: $home/plugins
+        cmd:
+          - git clone --depth 1 https://github.com/discourse/docker_manager.git
+
+run:
+  - exec: echo "Beginning of custom commands"
+  - exec: echo "End of custom commands"

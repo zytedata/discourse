@@ -18,3 +18,10 @@ image/discourse_dev/redis.template.yml
 .gc-state/*
 .vagrant/
 tmp/*
+# Credentials -- never commit. The ZADP agent key lives in ~/.config/zadp/,
+# runtime secrets in this project's Secret Manager.
+*.json
+*.pem
+*.p12
+.env
+.env.*
