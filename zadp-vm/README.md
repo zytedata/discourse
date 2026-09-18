@@ -19,7 +19,7 @@ deploy platform; this is a self-contained box.
 | Install | `discourse_docker` standalone at `/var/discourse` |
 | Firewall | `allow-web` (tcp 80/443, tag `web`) + ZADP's IAP-only SSH |
 | TLS | Let's Encrypt, obtained and renewed by Discourse's own nginx |
-| Mail | SMTP2GO, `mail-eu.smtp2go.com:2525` STARTTLS |
+| Mail | Mailgun, `smtp.mailgun.org:587` STARTTLS, from `noreply@mg.zyte.com` |
 
 `e2-small` rather than Discourse's documented 1 GB minimum: asset compilation
 OOMs or crawls at 1 GB on burstable CPU. This is the smallest type that
@@ -37,29 +37,40 @@ bootstraps reliably.
 ## Secrets
 
 `app.yml` here is tracked in git, so it carries
-`DISCOURSE_SMTP_PASSWORD: "__FROM_SECRET_MANAGER__"`. The real value lives in this
-project's Secret Manager as **`discourse-smtp-password`** and is put in place on
-the VM only:
+`DISCOURSE_SMTP_PASSWORD: "__FROM_SECRET_MANAGER__"`. The real value is recorded in
+this project's Secret Manager as **`discourse-smtp-password`** and is put in place
+on the VM only.
+
+**The ZADP agent service account cannot read secrets back.** `roles/editor` grants
+`secretmanager.versions.add` but not `secretmanager.versions.access`, so the agent
+can write a new version and never retrieve it. Secret Manager is therefore a record
+for a human, not a source the deploy can pull from. Two consequences:
+
+- A human (or any identity with `roles/secretmanager.secretAccessor`) reads it with
+  `gcloud secrets versions access latest --secret=discourse-smtp-password`.
+- The VM's runtime service account cannot read it either, so there is no boot-time
+  fetch. Granting that needs a project IAM change the agent account is not
+  permitted to make — ask in #zadp-support.
+
+To deploy a config change, supply the password on **stdin**:
 
 ```bash
 export CLOUDSDK_ACTIVE_CONFIG_NAME=zadp-zyte-vm-community-019d
 gcloud compute scp zadp-vm/app.yml zadp-vm/inject-smtp.sh discourse:/tmp/ \
   --zone=us-east1-b --tunnel-through-iap
-gcloud secrets versions access latest --secret=discourse-smtp-password \
+# reads the password from your terminal, never from argv
+read -rs SMTP_PW && printf '%s\n' "$SMTP_PW" \
 | gcloud compute ssh discourse --zone=us-east1-b --tunnel-through-iap --command='
     set -e
     sudo cp /tmp/app.yml /var/discourse/containers/app.yml
     sudo bash /tmp/inject-smtp.sh
     rm -f /tmp/app.yml /tmp/inject-smtp.sh'
+unset SMTP_PW
 ```
 
-`inject-smtp.sh` takes the password on **stdin**, never as an argument — argv is
-readable by any local user through `/proc`.
-
-The VM's own runtime service account **cannot** read that secret
-(`secretmanager.versions.access` denied), so it cannot fetch it at boot. Granting
-that needs a project IAM change, which the agent account is not permitted to make
-— ask in #zadp-support if you want boot-time fetch instead of the injection above.
+Then rebuild (see the detached-unit command below). `inject-smtp.sh` takes the
+password on stdin and never as an argument — argv is readable by any local user
+through `/proc`.
 
 ## Rebuild from nothing
 
@@ -108,6 +119,10 @@ the name working.
 
 ## Gotchas found the hard way
 
+- GCE blocks outbound tcp:25, so Mailgun's port 25 is not usable here; 587 is.
+  Mailgun also rejects From addresses outside a verified sending domain, which is
+  why `DISCOURSE_NOTIFICATION_EMAIL` is on `mg.zyte.com` and not on the VM's
+  ZADP hostname.
 - `DISCOURSE_SMTP_ADDRESS: smtp.example.com` is a **sentinel**: Discourse's web
   template aborts the build on it unless `DISCOURSE_SKIP_EMAIL_SETUP: "1"` is set.
 - `pkill -f "launcher bootstrap"` over SSH matches **its own** command line and
@@ -122,7 +137,7 @@ the name working.
 - Let's Encrypt certificate issued, `notAfter=Dec 17 15:48:49 2026 GMT`, renewal
   cron (`acme.sh --cron`) present inside the container
 - `http://` -> 301 to `https://`, `DISCOURSE_FORCE_HTTPS=true`
-- SMTP2GO login succeeded from the VM over 2525/STARTTLS
+- Mailgun login succeeded from the VM over 587/STARTTLS (465/SSL also works)
 - Ops Agent and `unattended-upgrades` both active
 
 Memory is tight: 1.4 GB of 1.9 GB in use with ~400 MB of swap touched, 2 unicorn

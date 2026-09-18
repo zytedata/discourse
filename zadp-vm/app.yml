@@ -35,16 +35,16 @@ env:
   ## Let's Encrypt writes here before a certificate expires.
   LETSENCRYPT_ACCOUNT_EMAIL: 'angel.munoz@zyte.com'
 
-  ## SMTP2GO. Port 2525 with STARTTLS: GCE blocks outbound 25, and 2525 is
-  ## SMTP2GO's alternative port. The password is NOT in this file -- it lives in
+  ## Mailgun. Port 587 with STARTTLS -- GCE blocks outbound 25, so the standard
+  ## port is not an option here. The password is NOT in this file: it lives in
   ## this project's Secret Manager as `discourse-smtp-password` and is injected
   ## into /var/discourse/containers/app.yml on the VM. See README.
-  DISCOURSE_SMTP_ADDRESS: mail-eu.smtp2go.com
-  DISCOURSE_SMTP_PORT: 2525
-  DISCOURSE_SMTP_USER_NAME: "zyte.com"
+  DISCOURSE_SMTP_ADDRESS: smtp.mailgun.org
+  DISCOURSE_SMTP_PORT: 587
+  DISCOURSE_SMTP_USER_NAME: "data@mg.zyte.com"
   DISCOURSE_SMTP_PASSWORD: "__FROM_SECRET_MANAGER__"
   DISCOURSE_SMTP_ENABLE_START_TLS: true
-  DISCOURSE_NOTIFICATION_EMAIL: noreply@discourse.community.zadp-vms.zyte.group
+  DISCOURSE_NOTIFICATION_EMAIL: noreply@mg.zyte.com
 
 volumes:
   - volume:
