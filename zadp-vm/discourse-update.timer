@@ -1,0 +1,11 @@
+[Unit]
+Description=Run the Discourse update on the first Sunday of each month
+
+[Timer]
+# First Sunday, 03:30 UTC -- after the nightly backup and snapshot window.
+OnCalendar=Sun *-*-01..07 03:30:00
+RandomizedDelaySec=1800
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -18,6 +18,12 @@ expose:
   - "443:443"
 
 params:
+  ## Which Discourse revision the image builds. The web template defaults to
+  ## `latest`, the untested tip of main -- wrong for a forum people rely on.
+  ## `tests-passed` is still current but only takes commits that passed CI.
+  ## Use `stable` for slower, release-only updates, or a sha to freeze.
+  version: tests-passed
+
   db_default_text_search_config: "pg_catalog.english"
   ## Tuned for 2 GB RAM (e2-small) per Discourse's own sizing guidance.
   db_shared_buffers: "128MB"

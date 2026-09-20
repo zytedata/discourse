@@ -146,6 +146,30 @@ MIG recreates instances from an image and would destroy the database. Real
 self-healing needs the state off the box (Cloud SQL + GCS uploads), which is what
 the `web_only` setup at the root of this repo does.
 
+## Staying current
+
+`app.yml` pins `params: version: tests-passed`. The web template's own default is
+`latest` — the untested tip of Discourse's main branch, which is the wrong
+default for a forum people rely on. `tests-passed` is still current but only
+takes commits that passed CI. Use `stable` for release-only updates, or a sha to
+freeze.
+
+Note this is the *application* version. It has nothing to do with the
+`discourse_docker` copy in this repo's root — the image clones Discourse at build
+time. See `zadp-vm/UNFORKING.md`.
+
+| Mechanism | Downtime | Use for |
+|---|---|---|
+| Admin → `/admin/upgrade` (`docker_manager`) | seconds | routine updates |
+| `./launcher rebuild app` | ~20 min | template or env changes |
+| `discourse-update.timer` | ~20 min | staying patched unattended |
+
+`discourse-update.timer` runs on the first Sunday of each month at 03:30 UTC.
+`discourse-update.sh` backs up first, records the current revision, rebuilds,
+then polls until the site actually serves. If it does not come back it logs the
+old revision to pin for a rollback and stops — it does not retry a rebuild loop
+on a broken site. The uptime alert is what reaches a human.
+
 ## Backups
 
 | | |
