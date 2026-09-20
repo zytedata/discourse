@@ -130,9 +130,25 @@ that would break `community.zyte.com`, if the address were not static.
 out of connections, or an OOM that leaves the process alive all look like
 "container up, site down", and nothing else notices. `discourse-healthcheck.sh`
 probes `/srv/status` over loopback every 5 minutes and restarts the container
-after 3 consecutive failures, then polls up to 5 minutes for it to come back
-before escalating. Tested by stopping the container on purpose: it detected,
-restarted and recovered.
+after 3 consecutive failures.
+
+Two guards exist because their absence caused a real outage on 2026-09-20: the
+first version had no boot grace and no lock, so after a rebuild it restarted the
+container every 5 minutes while it was still legitimately booting, and kept the
+site down instead of fixing it.
+
+- **Boot grace (10 min).** A container that started recently is *booting*, not
+  wedged. Discourse takes 2-5 minutes to serve after a restart or rebuild.
+- **Restart cooldown (1 h) and a lock.** One restart, then escalate to an ERROR
+  log for a human. It never restarts in a loop, and runs cannot overlap and
+  corrupt the counter.
+
+`THRESHOLD`, `BOOT_GRACE` and `RESTART_COOLDOWN` are env-overridable so the
+recovery path can be exercised without waiting out the real windows. Verified
+against five cases: healthy site (no-op), booting container (left alone),
+concurrent runs (lock holds), genuinely stopped container (restarted and
+recovered), and a second failure inside the cooldown (escalates instead of
+restarting again).
 
 A Cloud Monitoring uptime check hits `https://community.zyte.com/srv/status`
 from the US and Europe every 5 minutes, and the alert policy

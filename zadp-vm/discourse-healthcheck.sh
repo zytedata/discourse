@@ -10,53 +10,70 @@
 #     Postgres out of connections, an OOM that left the process alive. That is
 #     what this script is for.
 #
-# Runs every 5 minutes from discourse-healthcheck.timer.
+# HARD-WON RULE: a container that has only just started is BOOTING, not wedged.
+# Discourse takes 2-5 minutes to serve after a restart or rebuild. An earlier
+# version of this script had no boot grace and no lock, so it restarted the
+# container mid-boot every 5 minutes and kept the site down instead of fixing
+# it. Both guards below exist because of that outage -- do not remove them.
 set -uo pipefail
 
-HOSTNAME_CANON="${DISCOURSE_HOSTNAME_CANON:-community.zyte.com}"
+CANON="${DISCOURSE_HOSTNAME_CANON:-community.zyte.com}"
 STATE=/var/lib/discourse-healthcheck.fails
-THRESHOLD=3          # ~15 minutes of failure before acting
+LAST_RESTART=/var/lib/discourse-healthcheck.last-restart
+LOCK=/var/lock/discourse-healthcheck.lock
+# Overridable so the recovery path can be exercised without waiting out the
+# real grace window. Defaults are what runs in production.
+THRESHOLD="${THRESHOLD:-3}"                  # ~15 minutes of failure before acting
+BOOT_GRACE="${BOOT_GRACE:-600}"              # 10 min: longer than a normal Discourse boot
+RESTART_COOLDOWN="${RESTART_COOLDOWN:-3600}"
+
 log() { logger -t discourse-health -s "$*"; }
 
-mkdir -p "$(dirname "$STATE")"
-fails=$(cat "$STATE" 2>/dev/null || echo 0)
+# One at a time. Overlapping runs corrupted the failure counter before.
+exec 9>"$LOCK"
+flock -n 9 || { log "another check is running; skipping"; exit 0; }
 
-# Ask the app over the loopback, with the canonical Host header so Discourse
-# does not answer with a redirect to itself. -k because the cert is for the
-# public name, not for 127.0.0.1.
-if curl -fsS -k -o /dev/null --max-time 20 \
-      -H "Host: ${HOSTNAME_CANON}" "https://127.0.0.1/srv/status"; then
+mkdir -p "$(dirname "$STATE")"
+now=$(date +%s)
+
+probe() {
+  curl -fsS -k -o /dev/null --max-time 20 \
+    -H "Host: ${CANON}" "https://127.0.0.1/srv/status"
+}
+
+if probe; then
+  fails=$(cat "$STATE" 2>/dev/null || echo 0)
   [ "$fails" -gt 0 ] && log "recovered after $fails consecutive failures"
   echo 0 > "$STATE"
   exit 0
 fi
 
-fails=$((fails + 1))
+# Failing. Is it merely booting?
+started=$(docker inspect -f '{{.State.StartedAt}}' app 2>/dev/null || echo "")
+if [ -n "$started" ]; then
+  age=$(( now - $(date -d "$started" +%s 2>/dev/null || echo "$now") ))
+  if [ "$age" -lt "$BOOT_GRACE" ]; then
+    log "not serving, but container started ${age}s ago -- still booting, leaving it alone"
+    exit 0
+  fi
+fi
+
+fails=$(( $(cat "$STATE" 2>/dev/null || echo 0) + 1 ))
 echo "$fails" > "$STATE"
 log "health check FAILED ($fails/$THRESHOLD)"
+[ "$fails" -lt "$THRESHOLD" ] && exit 0
 
-if [ "$fails" -lt "$THRESHOLD" ]; then
-  exit 0
+# Do not restart repeatedly. If a restart did not fix it, a human is needed.
+last=$(cat "$LAST_RESTART" 2>/dev/null || echo 0)
+if [ $(( now - last )) -lt "$RESTART_COOLDOWN" ]; then
+  log "ERROR: still down $(( (now - last) / 60 ))m after a restart -- needs a human, not another restart"
+  exit 1
 fi
 
 log "threshold reached; restarting container"
-if docker restart app >/dev/null 2>&1; then
-  # Discourse is not ready the moment the container is: unicorn and Postgres
-  # take a couple of minutes, during which nginx answers 502. Poll instead of
-  # sleeping a fixed interval, or every successful recovery pages a human.
-  for _ in $(seq 1 20); do   # up to ~5 minutes
-    sleep 15
-    if curl -fsS -k -o /dev/null --max-time 20 \
-          -H "Host: ${HOSTNAME_CANON}" "https://127.0.0.1/srv/status"; then
-      log "restart succeeded"
-      echo 0 > "$STATE"
-      exit 0
-    fi
-  done
-fi
-
-# Still down after a restart. Log at a level the Ops Agent ships to Cloud
-# Logging, so an alert policy can fire; do not reboot in a loop.
-log "ERROR: Discourse still down after restart -- needs a human"
+echo "$now" > "$LAST_RESTART"
 echo 0 > "$STATE"
-exit 1
+# Deliberately no wait-and-verify here: the next run lands inside BOOT_GRACE and
+# will leave the container alone, and the run after that reports the truth.
+docker restart app >/dev/null 2>&1 || log "ERROR: docker restart app failed"
+exit 0
