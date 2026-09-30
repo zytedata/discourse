@@ -11,7 +11,7 @@
 # The Cloud Monitoring uptime alert is what reaches a human.
 set -uo pipefail
 
-CANON="${DISCOURSE_HOSTNAME_CANON:-community.zyte.com}"
+CANON="${DISCOURSE_HOSTNAME_CANON:-forum.zyte.com}"
 log() { logger -t discourse-update -s "$*"; }
 
 log "starting monthly update"

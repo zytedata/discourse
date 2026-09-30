@@ -39,8 +39,10 @@ env:
   ## Canonical name. Discourse 301s every other Host to this one, and the
   ## Let's Encrypt cert is issued for it plus each alias below (nginx itself
   ## is server_name _, so it already answers on any name that resolves here).
-  DISCOURSE_HOSTNAME: community.zyte.com
-  DISCOURSE_HOSTNAME_ALIASES: discourse.community.zadp-vms.zyte.group
+  ## community.zyte.com was canonical until 2026-09-30; kept as an alias so
+  ## existing links, bookmarks and already-sent emails keep working.
+  DISCOURSE_HOSTNAME: forum.zyte.com
+  DISCOURSE_HOSTNAME_ALIASES: "community.zyte.com,discourse.community.zadp-vms.zyte.group"
   DISCOURSE_DEVELOPER_EMAILS: 'angel.munoz@zyte.com'
   ## Let's Encrypt writes here before a certificate expires.
   LETSENCRYPT_ACCOUNT_EMAIL: 'angel.munoz@zyte.com'

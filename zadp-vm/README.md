@@ -5,7 +5,7 @@ A deliberately minimal, single-VM Discourse install in the ZADP project
 `web_only` path at the root of this repo — that one runs Discourse on the Zyte
 deploy platform; this is a self-contained box.
 
-- Site: <https://community.zyte.com>
+- Site: <https://forum.zyte.com>
 - ZADP project page (budget, VM card, delete): <https://zadp.zyte.group/vm/8/>
 
 ## What exists
@@ -18,7 +18,7 @@ deploy platform; this is a self-contained box.
 | OS | newest Ubuntu LTS family, discovered at create time |
 | Install | `discourse_docker` standalone at `/var/discourse` |
 | Firewall | `allow-web` (tcp 80/443, tag `web`) + ZADP's IAP-only SSH |
-| Hostname | `community.zyte.com` (canonical); ZADP name is a cert SAN and 301s to it |
+| Hostname | `forum.zyte.com` (canonical); `community.zyte.com` and the ZADP name are cert SANs, both 301 to it |
 | IP | `34.24.237.156`, **static** (`discourse-ip`) — the zyte.com A record depends on it |
 | TLS | Let's Encrypt, obtained and renewed by Discourse's own nginx |
 | Mail | Mailgun, `smtp.mailgun.org:587` STARTTLS, from `noreply@mg.zyte.com` |
@@ -112,7 +112,7 @@ sudo systemd-run --unit=discourse-bootstrap --collect \
 **Do not stop this VM.** It serves a public community and is expected to be up
 all the time. The cost guidance in the ZADP skill about stopping idle VMs is
 written for sandboxes and does not apply here. Stopping it is also the one thing
-that would break `community.zyte.com`, if the address were not static.
+that would break `forum.zyte.com`, if the address were not static.
 
 ## Availability
 
@@ -150,9 +150,9 @@ concurrent runs (lock holds), genuinely stopped container (restarted and
 recovered), and a second failure inside the cooldown (escalates instead of
 restarting again).
 
-A Cloud Monitoring uptime check hits `https://community.zyte.com/srv/status`
+A Cloud Monitoring uptime check hits `https://forum.zyte.com/srv/status`
 from the US and Europe every 5 minutes, and the alert policy
-*"community.zyte.com is down"* emails the owner. That is the backstop for when
+*"forum.zyte.com is down"* emails the owner. That is the backstop for when
 the watchdog itself cannot fix it.
 
 **What this design cannot do is survive losing the VM.** Postgres is on the local
@@ -276,3 +276,31 @@ VM drops it to about $2–6.
 ## Owner
 
 angel.munoz@zyte.com
+
+## Hostname history
+
+- **2026-09-30**: canonical moved from `community.zyte.com` to `forum.zyte.com`.
+  `community.zyte.com` stays a cert SAN and 301 target so existing links,
+  bookmarks and already-sent emails keep working. Updated in lockstep: the live
+  VM's `app.yml`, this repo's copy, `discourse-update.sh` /
+  `discourse-healthcheck.sh`'s canonical Host default, and the Cloud Monitoring
+  uptime check + alert (the monitored resource can't be patched in place --
+  create-new-delete-old, then repoint the alert policy's condition filter at the
+  new check_id).
+
+  **The first rebuild attempt failed** with
+  `MiniRacer::ScriptTerminatedError` during asset precompile -- a JS-minifier
+  worker hit its 15-second script timeout. `docker stats` showed the container
+  at ~98% CPU under plain production traffic, no rebuild running: `e2-small`
+  sustains only 50% of one physical core across its "2 vCPUs" and bursts for
+  just dozens of seconds beyond that, which a parallel asset build can burn
+  through mid-precompile. While the rebuild had the old container stopped, the
+  boot-grace-aware watchdog (correctly) restarted it, so `community.zyte.com`
+  kept serving throughout on the pre-change image -- `forum.zyte.com` 000'd in
+  that window because that container's cert had no SAN for it yet. A plain
+  retry succeeded; the `docker commit` step alone then took ~13 minutes
+  (heavy disk read I/O, `pd-balanced` throughput-bound, not a hang). If a
+  rebuild fails this way again, that is a capacity signal, not a config bug --
+  see "Staying current" above on when to move to `e2-medium`.
+- **2026-09-18**: `community.zyte.com` made canonical; the ZADP-assigned name
+  (`discourse.community.zadp-vms.zyte.group`) kept as the fallback alias.

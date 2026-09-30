@@ -17,7 +17,7 @@
 # it. Both guards below exist because of that outage -- do not remove them.
 set -uo pipefail
 
-CANON="${DISCOURSE_HOSTNAME_CANON:-community.zyte.com}"
+CANON="${DISCOURSE_HOSTNAME_CANON:-forum.zyte.com}"
 STATE=/var/lib/discourse-healthcheck.fails
 LAST_RESTART=/var/lib/discourse-healthcheck.last-restart
 LOCK=/var/lock/discourse-healthcheck.lock
