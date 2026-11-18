@@ -33,6 +33,15 @@ log() { logger -t discourse-health -s "$*"; }
 exec 9>"$LOCK"
 flock -n 9 || { log "another check is running; skipping"; exit 0; }
 
+# A rebuild stops the old container but keeps it while the new image builds.
+# Restarting it then fights the build for CPU and memory. Wait until the
+# rebuild ends; if it failed, the runs after that bring the old container back.
+if systemctl is-active --quiet discourse-update.service \
+   || pgrep -f 'launcher (rebuild|bootstrap)' >/dev/null; then
+  log "rebuild in progress; leaving the container alone"
+  exit 0
+fi
+
 mkdir -p "$(dirname "$STATE")"
 now=$(date +%s)
 

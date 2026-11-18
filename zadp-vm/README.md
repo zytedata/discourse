@@ -12,7 +12,7 @@ deploy platform; this is a self-contained box.
 
 | Thing | Value |
 |---|---|
-| VM | `discourse`, zone `us-east1-b`, `e2-small` (2 vCPU / 2 GB) |
+| VM | `discourse`, zone `us-east1-b`, `e2-medium` (2 vCPU / 4 GB; was `e2-small` until the CPU-starved rebuild below) |
 | Disk | 20 GB `pd-balanced`, daily snapshots kept 14 days (`daily-14d`) |
 | Swap | 2 GB on `/swapfile` (Discourse requires swap under 4 GB RAM) |
 | OS | newest Ubuntu LTS family, discovered at create time |
@@ -23,9 +23,8 @@ deploy platform; this is a self-contained box.
 | TLS | Let's Encrypt, obtained and renewed by Discourse's own nginx |
 | Mail | Mailgun, `smtp.mailgun.org:587` STARTTLS, from `noreply@mg.zyte.com` |
 
-`e2-small` rather than Discourse's documented 1 GB minimum: asset compilation
-OOMs or crawls at 1 GB on burstable CPU. This is the smallest type that
-bootstraps reliably.
+Not Discourse's documented 1 GB minimum: asset compilation OOMs or crawls at
+1 GB on burstable CPU, and `e2-small` ran out of CPU credit mid-rebuild.
 
 ## Files here
 
@@ -301,6 +300,8 @@ angel.munoz@zyte.com
   retry succeeded; the `docker commit` step alone then took ~13 minutes
   (heavy disk read I/O, `pd-balanced` throughput-bound, not a hang). If a
   rebuild fails this way again, that is a capacity signal, not a config bug --
-  see "Staying current" above on when to move to `e2-medium`.
+  see "Staying current" above on when to move to `e2-medium`. (Since moved to
+  `e2-medium`. Since 2026-11-18 the watchdog waits for a rebuild to end before
+  restarting anything, so the old container no longer competes with the build.)
 - **2026-09-18**: `community.zyte.com` made canonical; the ZADP-assigned name
   (`discourse.community.zadp-vms.zyte.group`) kept as the fallback alias.

@@ -24,7 +24,7 @@ fi
 log "pre-update backup ok"
 
 # 2. Record what we are on, so a rollback has something to pin to.
-OLD_SHA=$(docker exec app bash -c 'cd /var/www/discourse && git rev-parse HEAD' 2>/dev/null || echo unknown)
+OLD_SHA=$(docker exec -u discourse app git -C /var/www/discourse rev-parse HEAD 2>/dev/null || echo unknown)
 log "current revision: $OLD_SHA"
 
 # 3. Rebuild. This is ~20 minutes of downtime; the timer runs it at a quiet hour.
@@ -37,7 +37,7 @@ fi
 for _ in $(seq 1 20); do
   sleep 15
   if curl -fsS -k -o /dev/null --max-time 20 -H "Host: ${CANON}" "https://127.0.0.1/srv/status"; then
-    NEW_SHA=$(docker exec app bash -c 'cd /var/www/discourse && git rev-parse HEAD' 2>/dev/null || echo unknown)
+    NEW_SHA=$(docker exec -u discourse app git -C /var/www/discourse rev-parse HEAD 2>/dev/null || echo unknown)
     log "OK: update complete, $OLD_SHA -> $NEW_SHA"
     exit 0
   fi

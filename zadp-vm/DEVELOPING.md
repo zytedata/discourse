@@ -90,7 +90,7 @@ org's rulesets to it by hand.
 ## 2. VM / deployment changes
 
 Everything here is `zadp-vm/` in the `zyte-community` repo, on branch
-`claude/community-site-vm-setup-efdd5c` (not yet on `main`).
+`zadp-vm-setup` (not yet on `main`).
 
 ### Access
 
@@ -115,6 +115,9 @@ Never activate that gcloud configuration globally — it would repoint every
    this repo should describe the VM's actual state, not an intended one.
 
 ### The one real constraint: the VM is CPU-tight
+
+The VM has since moved to `e2-medium` (checked 2026-11-18); the history below
+explains why.
 
 `e2-small` sustains only **50% of one physical core** across its 2 vCPUs
 (bursting briefly beyond that). `docker stats` shows the running container at

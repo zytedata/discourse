@@ -25,3 +25,4 @@ tmp/*
 *.p12
 .env
 .env.*
+.DS_Store
