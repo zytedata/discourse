@@ -1,0 +1,78 @@
+##
+## Discourse single-container ("standalone") config for the ZADP community VM.
+## Rebuild after editing:  cd /var/discourse && sudo ./launcher rebuild app
+##
+templates:
+  - "templates/postgres.template.yml"
+  - "templates/redis.template.yml"
+  - "templates/web.template.yml"
+  - "templates/web.ratelimited.template.yml"
+  ## TLS, terminated by Discourse's own nginx. Let's Encrypt is obtained on first
+  ## start and renewed in the background; requires the hostname below to resolve
+  ## to this VM and tcp:80 open (the `allow-web` firewall rule).
+  - "templates/web.ssl.template.yml"
+  - "templates/web.letsencrypt.ssl.template.yml"
+
+expose:
+  - "80:80"     # redirects to 443 and answers the ACME http-01 challenge
+  - "443:443"
+
+params:
+  ## Which Discourse revision the image builds. The web template defaults to
+  ## `latest`, the untested tip of main -- wrong for a forum people rely on.
+  ## `tests-passed` is still current but only takes commits that passed CI.
+  ## Use `stable` for slower, release-only updates, or a sha to freeze.
+  version: tests-passed
+
+  db_default_text_search_config: "pg_catalog.english"
+  ## Tuned for 2 GB RAM (e2-small) per Discourse's own sizing guidance.
+  db_shared_buffers: "128MB"
+  db_work_mem: "10MB"
+
+env:
+  LANG: en_US.UTF-8
+  LC_ALL: en_US.UTF-8
+  RAILS_ENV: production
+  UNICORN_WORKERS: 2
+  UNICORN_SIDEKIQS: 1
+
+  ## Canonical name. Discourse 301s every other Host to this one, and the
+  ## Let's Encrypt cert is issued for it plus each alias below (nginx itself
+  ## is server_name _, so it already answers on any name that resolves here).
+  ## community.zyte.com was canonical until 2026-09-30; kept as an alias so
+  ## existing links, bookmarks and already-sent emails keep working.
+  DISCOURSE_HOSTNAME: forum.zyte.com
+  DISCOURSE_HOSTNAME_ALIASES: "community.zyte.com,discourse.community.zadp-vms.zyte.group"
+  DISCOURSE_DEVELOPER_EMAILS: 'angel.munoz@zyte.com'
+  ## Let's Encrypt writes here before a certificate expires.
+  LETSENCRYPT_ACCOUNT_EMAIL: 'angel.munoz@zyte.com'
+
+  ## Mailgun. Port 587 with STARTTLS -- GCE blocks outbound 25, so the standard
+  ## port is not an option here. The password is NOT in this file: it lives in
+  ## this project's Secret Manager as `discourse-smtp-password` and is injected
+  ## into /var/discourse/containers/app.yml on the VM. See README.
+  DISCOURSE_SMTP_ADDRESS: smtp.mailgun.org
+  DISCOURSE_SMTP_PORT: 587
+  DISCOURSE_SMTP_USER_NAME: "data@mg.zyte.com"
+  DISCOURSE_SMTP_PASSWORD: "__FROM_SECRET_MANAGER__"
+  DISCOURSE_SMTP_ENABLE_START_TLS: true
+  DISCOURSE_NOTIFICATION_EMAIL: noreply@mg.zyte.com
+
+volumes:
+  - volume:
+      host: /var/discourse/shared/standalone
+      guest: /shared
+  - volume:
+      host: /var/discourse/shared/standalone/log/var-log
+      guest: /var/log
+
+hooks:
+  after_code:
+    - exec:
+        cd: $home/plugins
+        cmd:
+          - git clone --depth 1 https://github.com/discourse/docker_manager.git
+
+run:
+  - exec: echo "Beginning of custom commands"
+  - exec: echo "End of custom commands"
